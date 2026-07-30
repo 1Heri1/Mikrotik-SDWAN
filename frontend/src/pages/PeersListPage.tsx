@@ -16,6 +16,7 @@ export function PeersListPage() {
   const [statusFilter, setStatusFilter] = useState<"online" | "offline" | "">("");
   const [page, setPage] = useState(1);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const { data, isLoading } = usePeersList({
     search: search || undefined,
@@ -29,12 +30,20 @@ export function PeersListPage() {
 
   async function handleImport() {
     setImportMessage(null);
-    const result = await importMutation.mutateAsync();
-    setImportMessage(
-      `Imported ${result.imported_count} peer${result.imported_count === 1 ? "" : "s"} from the router` +
-        (result.skipped_count > 0 ? ` (${result.skipped_count} already tracked, skipped)` : "") +
-        "."
-    );
+    setImportError(null);
+    try {
+      const result = await importMutation.mutateAsync();
+      setImportMessage(
+        `Imported ${result.imported_count} peer${result.imported_count === 1 ? "" : "s"} from the router` +
+          (result.skipped_count > 0 ? ` (${result.skipped_count} already tracked, skipped)` : "") +
+          "."
+      );
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        "Import failed. Check that the router connection is configured and reachable.";
+      setImportError(message);
+    }
   }
 
   return (
@@ -65,6 +74,15 @@ export function PeersListPage() {
         <div className="rounded-md border border-surface-border bg-surface-raised px-3 py-2 text-sm text-slate-300">
           {importMessage}
           <button type="button" className="ml-3 underline" onClick={() => setImportMessage(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {importError && (
+        <div className="rounded-md border border-danger bg-danger-bg px-3 py-2 text-sm text-danger">
+          {importError}
+          <button type="button" className="ml-3 underline" onClick={() => setImportError(null)}>
             Dismiss
           </button>
         </div>
