@@ -71,4 +71,5 @@ class RevealedPassword(BaseModel):
 class ImportSummary(BaseModel):
     imported_count: int
     skipped_count: int
+    duplicate_names: list[str] = []
     peers: list[PeerOut]

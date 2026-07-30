@@ -93,14 +93,28 @@ async def import_peers_from_router(
     router is already configured and just needs to keep working.
     """
     secrets = await client.list_secrets()
-    existing_names = set((await db.execute(select(Peer.name))).scalars().all())
+    pre_existing_names = set((await db.execute(select(Peer.name))).scalars().all())
 
     imported: list[Peer] = []
     skipped = 0
+    duplicate_names: list[str] = []
+    seen_names: set[str] = set()
+
     for secret in secrets:
-        if secret.name in existing_names:
+        if secret.name in pre_existing_names:
             skipped += 1
             continue
+        if secret.name in seen_names:
+            # RouterOS does not enforce unique PPP secret names. Our Peer
+            # table uses the name as the natural key (every router operation
+            # - edit/delete/enable/disable - looks a secret up by name), so
+            # only the first occurrence can be imported; flag the rest so the
+            # admin knows to deduplicate on the router if they want every
+            # occurrence tracked individually.
+            skipped += 1
+            duplicate_names.append(secret.name)
+            continue
+        seen_names.add(secret.name)
         peer = Peer(
             name=secret.name,
             encrypted_password=encrypt_secret(""),
@@ -125,12 +139,17 @@ async def import_peers_from_router(
         db,
         actor,
         action="peer.import",
-        after={"imported_count": len(imported), "skipped_count": skipped},
+        after={
+            "imported_count": len(imported),
+            "skipped_count": skipped,
+            "duplicate_names": duplicate_names,
+        },
         ip_address=ip_address,
     )
     return ImportSummary(
         imported_count=len(imported),
         skipped_count=skipped,
+        duplicate_names=duplicate_names,
         peers=[PeerOut.model_validate(p) for p in imported],
     )
 

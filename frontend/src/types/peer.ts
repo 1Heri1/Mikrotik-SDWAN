@@ -56,5 +56,6 @@ export interface Paginated<T> {
 export interface ImportSummary {
   imported_count: number;
   skipped_count: number;
+  duplicate_names: string[];
   peers: Peer[];
 }

@@ -18,10 +18,14 @@ class FakeMikrotikBackend(MikrotikBackend):
 
     def __init__(self):
         self.secrets: dict[str, PeerSecretDTO] = {}
+        # RouterOS does not enforce unique PPP secret names, so /ppp/secret/print
+        # can return more than one row with the same name - a plain dict can't
+        # model that, hence this side list used only to simulate that quirk.
+        self.duplicate_secrets: list[PeerSecretDTO] = []
         self._next_id = 1
 
     async def list_secrets(self):
-        return list(self.secrets.values())
+        return list(self.secrets.values()) + self.duplicate_secrets
 
     async def get_secret(self, name):
         if name not in self.secrets:
@@ -264,3 +268,42 @@ async def test_import_peers_from_router(db_session, admin_user, monkeypatch):
         peer_id = body["peers"][0]["id"]
         reveal_resp = await client.get(f"/api/peers/{peer_id}/reveal-password")
         assert reveal_resp.json() == {"known": False, "password": None}
+
+
+@pytest.mark.asyncio
+async def test_import_peers_handles_duplicate_names_on_router(db_session, admin_user, monkeypatch):
+    """RouterOS does not enforce unique PPP secret names. Importing must not
+    crash with a DB unique-constraint violation when the router lists the
+    same name twice - only the first occurrence can be tracked, and the rest
+    should be reported back to the admin instead of raising a 500."""
+
+    async def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = lambda: admin_user
+
+    fake_client = FakeMikrotikBackend()
+    fake_client.secrets["floris_babka"] = PeerSecretDTO(
+        id="*1", name="floris_babka", profile="default", disabled=False, service="pptp"
+    )
+    fake_client.duplicate_secrets.append(
+        PeerSecretDTO(id="*2", name="floris_babka", profile="default", disabled=False, service="pptp")
+    )
+
+    async def fake_build_client(db):
+        return fake_client
+
+    monkeypatch.setattr(router_config_service, "build_client", fake_build_client)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/peers/import")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["imported_count"] == 1
+        assert body["skipped_count"] == 1
+        assert body["duplicate_names"] == ["floris_babka"]
+
+        list_resp = await client.get("/api/peers")
+        assert list_resp.json()["total"] == 1

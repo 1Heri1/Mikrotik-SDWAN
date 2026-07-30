@@ -33,11 +33,17 @@ export function PeersListPage() {
     setImportError(null);
     try {
       const result = await importMutation.mutateAsync();
-      setImportMessage(
+      let message =
         `Imported ${result.imported_count} peer${result.imported_count === 1 ? "" : "s"} from the router` +
-          (result.skipped_count > 0 ? ` (${result.skipped_count} already tracked, skipped)` : "") +
-          "."
-      );
+        (result.skipped_count > 0 ? ` (${result.skipped_count} already tracked or duplicate, skipped)` : "") +
+        ".";
+      if (result.duplicate_names.length > 0) {
+        message +=
+          ` Warning: the router has duplicate secret names (only the first of each was imported): ` +
+          result.duplicate_names.join(", ") +
+          ". Rename the duplicates on the router if you want each tracked separately.";
+      }
+      setImportMessage(message);
     } catch (err: unknown) {
       const message =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
