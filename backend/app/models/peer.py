@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Index, String, Text
+from sqlalchemy import Boolean, DateTime, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -22,7 +22,7 @@ class Peer(Base, TimestampMixin):
     comment: Mapped[str | None] = mapped_column(String(255), default=None)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     mikrotik_secret_id: Mapped[str | None] = mapped_column(String(32), default=None)
-    last_seen_online_at: Mapped[datetime | None] = mapped_column(default=None)
+    last_seen_online_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     # Denormalized cache of "is this peer online as of the latest poll cycle",
     # updated by the scheduler alongside each snapshot insert. Avoids a
     # correlated "latest snapshot per peer" subquery on every peers-list
