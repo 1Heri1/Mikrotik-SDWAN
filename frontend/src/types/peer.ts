@@ -10,6 +10,7 @@ export interface Peer {
   last_seen_online_at: string | null;
   created_at: string;
   is_online: boolean;
+  password_known: boolean;
 }
 
 export interface PeerCreate {
@@ -50,4 +51,10 @@ export interface Paginated<T> {
   total: number;
   page: number;
   page_size: number;
+}
+
+export interface ImportSummary {
+  imported_count: number;
+  skipped_count: number;
+  peers: Peer[];
 }

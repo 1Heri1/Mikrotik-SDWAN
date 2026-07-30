@@ -214,3 +214,53 @@ async def test_peers_endpoint_503_when_router_not_configured(db_session, admin_u
             json={"name": "peer-x", "password": "pw", "mikrotik_profile": "default", "service": "pptp"},
         )
         assert resp.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_import_peers_from_router(db_session, admin_user, monkeypatch):
+    async def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = lambda: admin_user
+
+    fake_client = FakeMikrotikBackend()
+    # Simulate a secret that already existed on the router before the app
+    # ever touched it (the common real-world case: adopting this app on a
+    # concentrator with pre-existing PPP secrets).
+    fake_client.secrets["preexisting-peer"] = PeerSecretDTO(
+        id="*99",
+        name="preexisting-peer",
+        profile="default",
+        disabled=False,
+        service="pptp",
+        local_address=None,
+        remote_address=None,
+        comment="already on router",
+    )
+
+    async def fake_build_client(db):
+        return fake_client
+
+    monkeypatch.setattr(router_config_service, "build_client", fake_build_client)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/peers/import")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["imported_count"] == 1
+        assert body["skipped_count"] == 0
+        assert body["peers"][0]["name"] == "preexisting-peer"
+        assert body["peers"][0]["password_known"] is False
+
+        # Running the import again should skip the now-tracked peer.
+        resp2 = await client.post("/api/peers/import")
+        body2 = resp2.json()
+        assert body2["imported_count"] == 0
+        assert body2["skipped_count"] == 1
+
+        # Reveal-password must report "unknown", not a misleading empty string.
+        peer_id = body["peers"][0]["id"]
+        reveal_resp = await client.get(f"/api/peers/{peer_id}/reveal-password")
+        assert reveal_resp.json() == {"known": False, "password": None}

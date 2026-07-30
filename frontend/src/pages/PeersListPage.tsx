@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { Spinner } from "@/components/common/Spinner";
 import { PeerFilterBar } from "@/components/peers/PeerFilterBar";
 import { PeersTable } from "@/components/peers/PeersTable";
-import { usePeersList } from "@/hooks/usePeers";
+import { useImportPeers, usePeersList } from "@/hooks/usePeers";
 
 const PAGE_SIZE = 25;
 
@@ -15,6 +15,7 @@ export function PeersListPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"online" | "offline" | "">("");
   const [page, setPage] = useState(1);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
 
   const { data, isLoading } = usePeersList({
     search: search || undefined,
@@ -22,22 +23,52 @@ export function PeersListPage() {
     page,
     page_size: PAGE_SIZE,
   });
+  const importMutation = useImportPeers();
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
+
+  async function handleImport() {
+    setImportMessage(null);
+    const result = await importMutation.mutateAsync();
+    setImportMessage(
+      `Imported ${result.imported_count} peer${result.imported_count === 1 ? "" : "s"} from the router` +
+        (result.skipped_count > 0 ? ` (${result.skipped_count} already tracked, skipped)` : "") +
+        "."
+    );
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-lg font-semibold text-slate-100">Peers</h1>
         {user?.role === "admin" && (
-          <Link
-            to="/peers/new"
-            className="rounded-md bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-white"
-          >
-            + Add peer
-          </Link>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleImport}
+              disabled={importMutation.isPending}
+              className="rounded-md border border-surface-border px-3 py-1.5 text-sm text-slate-300 hover:bg-surface-raised disabled:opacity-50"
+            >
+              {importMutation.isPending ? "Importing…" : "Import from router"}
+            </button>
+            <Link
+              to="/peers/new"
+              className="rounded-md bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-white"
+            >
+              + Add peer
+            </Link>
+          </div>
         )}
       </div>
+
+      {importMessage && (
+        <div className="rounded-md border border-surface-border bg-surface-raised px-3 py-2 text-sm text-slate-300">
+          {importMessage}
+          <button type="button" className="ml-3 underline" onClick={() => setImportMessage(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <PeerFilterBar
         search={search}

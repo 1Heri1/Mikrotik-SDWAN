@@ -18,6 +18,7 @@ class PeerOut(BaseModel):
     last_seen_online_at: datetime | None
     created_at: datetime
     is_online: bool = False
+    password_known: bool = True
 
 
 class PeerCreate(BaseModel):
@@ -63,4 +64,11 @@ class GeneratedPassword(BaseModel):
 
 
 class RevealedPassword(BaseModel):
-    password: str
+    known: bool
+    password: str | None = None
+
+
+class ImportSummary(BaseModel):
+    imported_count: int
+    skipped_count: int
+    peers: list[PeerOut]

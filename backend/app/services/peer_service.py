@@ -10,7 +10,7 @@ from app.models.peer import Peer
 from app.models.peer_status_snapshot import PeerStatusSnapshot
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
-from app.schemas.peer import DiffPreview, PeerCreate, PeerOut, PeerUpdate
+from app.schemas.peer import DiffPreview, ImportSummary, PeerCreate, PeerOut, PeerUpdate
 from app.services import audit_service
 from app.services.mikrotik.base import MikrotikBackend
 from app.services.mikrotik.exceptions import MikrotikNotFoundError
@@ -77,6 +77,62 @@ async def get_peer_history(
         .order_by(PeerStatusSnapshot.timestamp.asc())
     )
     return list(result.scalars().all())
+
+
+async def import_peers_from_router(
+    db: AsyncSession, client: MikrotikBackend, actor: User, ip_address: str | None = None
+) -> ImportSummary:
+    """Discover PPP secrets that already exist on the router but aren't tracked
+    in our DB yet (the common case when adopting this app on a concentrator
+    that already has peers configured), and create local Peer rows for them.
+
+    RouterOS never returns a secret's plaintext password via /ppp/secret/print,
+    so imported peers are marked password_known=False - the admin must use
+    "Reset password" to set a new, known password if they need one (e.g. to
+    hand the peer a fresh credential), or leave it as-is if the existing peer
+    router is already configured and just needs to keep working.
+    """
+    secrets = await client.list_secrets()
+    existing_names = set((await db.execute(select(Peer.name))).scalars().all())
+
+    imported: list[Peer] = []
+    skipped = 0
+    for secret in secrets:
+        if secret.name in existing_names:
+            skipped += 1
+            continue
+        peer = Peer(
+            name=secret.name,
+            encrypted_password=encrypt_secret(""),
+            mikrotik_profile=secret.profile,
+            service=secret.service,
+            assigned_local_address=secret.local_address,
+            assigned_remote_address=secret.remote_address,
+            comment=secret.comment,
+            enabled=not secret.disabled,
+            mikrotik_secret_id=secret.id or None,
+            password_known=False,
+        )
+        db.add(peer)
+        imported.append(peer)
+
+    if imported:
+        await db.commit()
+        for peer in imported:
+            await db.refresh(peer)
+
+    await audit_service.record(
+        db,
+        actor,
+        action="peer.import",
+        after={"imported_count": len(imported), "skipped_count": skipped},
+        ip_address=ip_address,
+    )
+    return ImportSummary(
+        imported_count=len(imported),
+        skipped_count=skipped,
+        peers=[PeerOut.model_validate(p) for p in imported],
+    )
 
 
 async def create_peer(
@@ -181,6 +237,7 @@ async def update_peer(
         peer.comment = data.comment
     if data.password:
         peer.encrypted_password = encrypt_secret(data.password)
+        peer.password_known = True
 
     await db.commit()
     await db.refresh(peer)
@@ -248,6 +305,7 @@ async def reset_password(
     password = new_password or generate_strong_password()
     await client.edit_secret(peer.name, password=password)
     peer.encrypted_password = encrypt_secret(password)
+    peer.password_known = True
     await db.commit()
     await db.refresh(peer)
 
@@ -263,11 +321,19 @@ async def reset_password(
     return peer
 
 
-async def reveal_password(db: AsyncSession, peer_id: int, actor: User, ip_address: str | None = None) -> str:
+async def reveal_password(
+    db: AsyncSession, peer_id: int, actor: User, ip_address: str | None = None
+) -> tuple[bool, str | None]:
+    """Returns (known, password). known=False for peers imported from the
+    router whose real password was never available to us (see
+    import_peers_from_router) - callers should show that explicitly rather
+    than a misleading empty/placeholder string."""
     from app.core.crypto import decrypt_secret
 
     peer = await get_peer_or_raise(db, peer_id)
     await audit_service.record(
         db, actor, action="peer.reveal_password", target_peer_id=peer.id, ip_address=ip_address
     )
-    return decrypt_secret(peer.encrypted_password)
+    if not peer.password_known:
+        return False, None
+    return True, decrypt_secret(peer.encrypted_password)

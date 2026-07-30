@@ -42,7 +42,9 @@ export function PeerDetailPage() {
   const [pendingUpdate, setPendingUpdate] = useState<PeerUpdate | null>(null);
   const [diffPreview, setDiffPreview] = useState<DiffPreview | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [revealedPassword, setRevealedPassword] = useState<string | null>(null);
+  const [revealedPassword, setRevealedPassword] = useState<{ known: boolean; password: string | null } | null>(
+    null
+  );
 
   if (isLoading || !peer) {
     return (
@@ -78,8 +80,8 @@ export function PeerDetailPage() {
   }
 
   async function handleReveal() {
-    const password = await revealPasswordMutation.mutateAsync();
-    setRevealedPassword(password);
+    const result = await revealPasswordMutation.mutateAsync();
+    setRevealedPassword(result);
   }
 
   return (
@@ -131,7 +133,16 @@ export function PeerDetailPage() {
 
       {revealedPassword && (
         <div className="rounded-md border border-warning bg-warning-bg px-3 py-2 text-sm text-warning">
-          Current password: <code className="font-mono">{revealedPassword}</code>
+          {revealedPassword.known ? (
+            <>
+              Current password: <code className="font-mono">{revealedPassword.password}</code>
+            </>
+          ) : (
+            <>
+              Password unknown — this peer was imported from the router and its real password was never
+              available to the app. Use "Reset password" to set a new, known one.
+            </>
+          )}
           <button type="button" className="ml-3 underline" onClick={() => setRevealedPassword(null)}>
             Hide
           </button>

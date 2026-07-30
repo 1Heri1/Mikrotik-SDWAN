@@ -11,6 +11,7 @@ from app.schemas.common import PaginatedResponse
 from app.schemas.peer import (
     DiffPreview,
     GeneratedPassword,
+    ImportSummary,
     PeerCreate,
     PeerHistoryPoint,
     PeerOut,
@@ -76,6 +77,19 @@ async def get_peer_history(
 ) -> list[PeerHistoryPoint]:
     rows = await peer_service.get_peer_history(db, peer_id, range)
     return [PeerHistoryPoint.model_validate(r) for r in rows]
+
+
+@router.post("/import", response_model=ImportSummary)
+async def import_peers(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_role("admin")),
+) -> ImportSummary:
+    """Discover PPP secrets already configured on the router but not yet
+    tracked in the app (e.g. adopting this app on a concentrator that already
+    has peers set up) and create local rows for them."""
+    client = await _get_client(db)
+    return await peer_service.import_peers_from_router(db, client, actor, ip_address=_client_ip(request))
 
 
 @router.post("", response_model=PeerOut, status_code=status.HTTP_201_CREATED)
@@ -167,10 +181,10 @@ async def reveal_peer_password(
     actor: User = Depends(require_role("admin")),
 ) -> RevealedPassword:
     try:
-        password = await peer_service.reveal_password(db, peer_id, actor, ip_address=_client_ip(request))
+        known, password = await peer_service.reveal_password(db, peer_id, actor, ip_address=_client_ip(request))
     except PeerNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
-    return RevealedPassword(password=password)
+    return RevealedPassword(known=known, password=password)
 
 
 @router.delete("/{peer_id}", status_code=status.HTTP_204_NO_CONTENT)

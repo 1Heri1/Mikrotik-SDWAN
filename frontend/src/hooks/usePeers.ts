@@ -83,3 +83,11 @@ export function useDeletePeer() {
 export function useGeneratePassword() {
   return useMutation({ mutationFn: () => peersApi.generatePassword() });
 }
+
+export function useImportPeers() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => peersApi.importPeersFromRouter(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["peers"] }),
+  });
+}

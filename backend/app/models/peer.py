@@ -23,6 +23,11 @@ class Peer(Base, TimestampMixin):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     mikrotik_secret_id: Mapped[str | None] = mapped_column(String(32), default=None)
     last_seen_online_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    # False for peers imported from the router rather than created through
+    # the app: RouterOS never returns a PPP secret's plaintext password via
+    # /ppp/secret/print, so an imported peer's real password is unknown to
+    # us until an admin explicitly resets it (which sets this back to True).
+    password_known: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     # Denormalized cache of "is this peer online as of the latest poll cycle",
     # updated by the scheduler alongside each snapshot insert. Avoids a
     # correlated "latest snapshot per peer" subquery on every peers-list

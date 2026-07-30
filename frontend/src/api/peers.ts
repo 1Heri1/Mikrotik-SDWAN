@@ -1,5 +1,13 @@
 import { apiClient } from "@/api/client";
-import type { DiffPreview, Paginated, Peer, PeerCreate, PeerHistoryPoint, PeerUpdate } from "@/types/peer";
+import type {
+  DiffPreview,
+  ImportSummary,
+  Paginated,
+  Peer,
+  PeerCreate,
+  PeerHistoryPoint,
+  PeerUpdate,
+} from "@/types/peer";
 
 export interface PeerListParams {
   search?: string;
@@ -58,9 +66,16 @@ export async function resetPeerPassword(id: number, newPassword?: string): Promi
   return data;
 }
 
-export async function revealPeerPassword(id: number): Promise<string> {
-  const { data } = await apiClient.get<{ password: string }>(`/peers/${id}/reveal-password`);
-  return data.password;
+export async function revealPeerPassword(id: number): Promise<{ known: boolean; password: string | null }> {
+  const { data } = await apiClient.get<{ known: boolean; password: string | null }>(
+    `/peers/${id}/reveal-password`
+  );
+  return data;
+}
+
+export async function importPeersFromRouter(): Promise<ImportSummary> {
+  const { data } = await apiClient.post<ImportSummary>("/peers/import");
+  return data;
 }
 
 export async function deletePeer(id: number): Promise<void> {
