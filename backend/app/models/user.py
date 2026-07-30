@@ -1,0 +1,22 @@
+from datetime import datetime
+
+from sqlalchemy import Boolean, CheckConstraint, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.models.base import Base, TimestampMixin
+
+
+class User(Base, TimestampMixin):
+    __tablename__ = "users"
+    __table_args__ = (CheckConstraint("role in ('admin','viewer')", name="ck_users_role"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_login_at: Mapped[datetime | None] = mapped_column(default=None)
+
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )

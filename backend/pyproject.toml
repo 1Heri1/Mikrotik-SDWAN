@@ -1,0 +1,20 @@
+[project]
+name = "mikrotik-monitor-backend"
+version = "1.0.0"
+description = "Backend for the Mikrotik VPN concentrator monitoring app"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]

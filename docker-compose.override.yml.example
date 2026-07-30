@@ -1,0 +1,25 @@
+# Example override for switching from a self-signed certificate to a real
+# Let's Encrypt certificate once a domain points at this server.
+#
+# Usage:
+#   1. cp docker-compose.override.yml.example docker-compose.override.yml
+#   2. edit the domain/email below
+#   3. docker compose up -d
+#   4. run the one-off certbot command shown in README.md to obtain the
+#      certificate into ./certbot/conf, then reload the frontend container
+#
+# docker-compose.override.yml is read automatically alongside docker-compose.yml.
+
+services:
+  frontend:
+    volumes:
+      - ./certbot/conf/live/YOUR_DOMAIN:/etc/nginx/certs:ro
+      - ./certbot/www:/var/www/certbot:ro
+
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: >
+      sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h; done"

@@ -1,0 +1,19 @@
+[Unit]
+Description=Mikrotik VPN Monitor backend
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=mikrotik-monitor
+Group=mikrotik-monitor
+WorkingDirectory=/opt/mikrotik-monitor/backend
+EnvironmentFile=/opt/mikrotik-monitor/backend/.env
+ExecStart=/opt/mikrotik-monitor/backend/.venv/bin/gunicorn -c gunicorn_conf.py app.main:app
+Restart=on-failure
+RestartSec=5
+# Migrations run once before each start; safe to repeat (idempotent).
+ExecStartPre=/opt/mikrotik-monitor/backend/.venv/bin/alembic upgrade head
+
+[Install]
+WantedBy=multi-user.target
